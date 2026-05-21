@@ -1,21 +1,28 @@
 # NimbusKart Cost Janitor Report
-**Generated:** 2026-05-21 07:38:37 UTC
+**Generated:** 2026-05-21 10:30:38 UTC
+**Mode:** DRY RUN
 **Total findings:** 3
 **Estimated monthly waste:** $0.80
 
 ## Findings
 
 ### ebs_volume — vol-eadceefa
-- **Reason:** EBS volume not attached to any instance
+- **Reason:** unattached
+- **Age:** 0 days
 - **Estimated cost:** $0.80/mo
-- **Action:** would_delete
+- **Suggested action:** delete
+- **Safe to auto-delete:** False
 
 ### ebs_volume — vol-915ad4fc
-- **Reason:** Missing required tags: Project, Environment, Owner, ManagedBy
+- **Reason:** missing_tags:Project,Environment,Owner,ManagedBy
+- **Age:** 0 days
 - **Estimated cost:** $0.00/mo
-- **Action:** flag
+- **Suggested action:** tag
+- **Safe to auto-delete:** False
 
 ### ebs_volume — vol-5f52d70f
-- **Reason:** Missing required tags: Project, Environment, Owner, ManagedBy
+- **Reason:** missing_tags:Project,Environment,Owner,ManagedBy
+- **Age:** 0 days
 - **Estimated cost:** $0.00/mo
-- **Action:** flag
+- **Suggested action:** tag
+- **Safe to auto-delete:** False

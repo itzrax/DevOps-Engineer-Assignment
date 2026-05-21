@@ -1,56 +1,47 @@
 {
-  "generated_at": "2026-05-21T07:38:37.869943+00:00",
-  "dry_run": true,
-  "total_findings": 3,
-  "estimated_monthly_waste_usd": 0.8,
+  "scan_timestamp": "2026-05-21T10:33:12Z",
+  "account_id": "000000000000",
+  "region": "us-east-1",
+  "summary": {
+    "total_orphans": 3,
+    "estimated_monthly_waste_usd": 0.8
+  },
   "findings": [
     {
-      "resource_type": "ebs_volume",
       "resource_id": "vol-eadceefa",
-      "region": "us-east-1",
-      "reason": "EBS volume not attached to any instance",
+      "resource_type": "ebs_volume",
+      "reason": "unattached",
+      "age_days": 0,
       "estimated_monthly_cost_usd": 0.8,
-      "tags": [
-        {
-          "Key": "ManagedBy",
-          "Value": "terraform"
-        },
-        {
-          "Key": "Owner",
-          "Value": "devops-team"
-        },
-        {
-          "Key": "Environment",
-          "Value": "staging"
-        },
-        {
-          "Key": "Project",
-          "Value": "NimbusKart"
-        },
-        {
-          "Key": "Name",
-          "Value": "nimbuskart-orphan-vol"
-        }
-      ],
-      "action": "would_delete"
+      "tags": {
+        "ManagedBy": "terraform",
+        "Owner": "devops-team",
+        "Environment": "staging",
+        "Project": "NimbusKart",
+        "Name": "nimbuskart-orphan-vol"
+      },
+      "suggested_action": "delete",
+      "safe_to_auto_delete": false
     },
     {
-      "resource_type": "ebs_volume",
       "resource_id": "vol-915ad4fc",
-      "region": "us-east-1",
-      "reason": "Missing required tags: Project, Environment, Owner, ManagedBy",
+      "resource_type": "ebs_volume",
+      "reason": "missing_tags:Project,Environment,Owner,ManagedBy",
+      "age_days": 0,
       "estimated_monthly_cost_usd": 0.0,
-      "tags": [],
-      "action": "flag"
+      "tags": {},
+      "suggested_action": "tag",
+      "safe_to_auto_delete": false
     },
     {
-      "resource_type": "ebs_volume",
       "resource_id": "vol-5f52d70f",
-      "region": "us-east-1",
-      "reason": "Missing required tags: Project, Environment, Owner, ManagedBy",
+      "resource_type": "ebs_volume",
+      "reason": "missing_tags:Project,Environment,Owner,ManagedBy",
+      "age_days": 0,
       "estimated_monthly_cost_usd": 0.0,
-      "tags": [],
-      "action": "flag"
+      "tags": {},
+      "suggested_action": "tag",
+      "safe_to_auto_delete": false
     }
   ]
 }
