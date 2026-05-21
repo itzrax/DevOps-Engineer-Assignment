@@ -16,3 +16,5 @@ PRICING = {
     "elastic_ip": 3.60,
     "ec2_t3_micro": 8.35,
 }
+
+ACCOUNT_ID = "000000000000"

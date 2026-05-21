@@ -5,14 +5,21 @@ Scans AWS for orphaned/wasted resources and generates a cost report.
 """
 
 import json
+import sys
 import argparse
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import boto3
-from botocore.config import Config
 
-from constants import REQUIRED_TAGS, DEFAULT_STOPPED_DAYS, LOCALSTACK_ENDPOINT, DEFAULT_REGION, PRICING
+from constants import (
+    REQUIRED_TAGS,
+    DEFAULT_STOPPED_DAYS,
+    LOCALSTACK_ENDPOINT,
+    DEFAULT_REGION,
+    PRICING,
+    ACCOUNT_ID,
+)
 
 
 def get_client(service: str, use_localstack: bool = True):
@@ -27,6 +34,7 @@ def get_client(service: str, use_localstack: bool = True):
         )
     return boto3.client(service, region_name=DEFAULT_REGION)
 
+
 def is_protected(tags: list) -> bool:
     """Return True if resource has Protected=true tag."""
     if not tags:
@@ -36,14 +44,13 @@ def is_protected(tags: list) -> bool:
         for t in tags
     )
 
-def get_tag_value(tags: list, key: str) -> str:
-    """Get value of a specific tag."""
+
+def tags_to_dict(tags: list) -> dict:
+    """Convert AWS tags list to a plain dict."""
     if not tags:
-        return ""
-    for t in tags:
-        if t["Key"] == key:
-            return t["Value"]
-    return ""
+        return {}
+    return {t["Key"]: t["Value"] for t in tags}
+
 
 def check_missing_tags(tags: list) -> list:
     """Return list of required tags that are missing."""
@@ -51,6 +58,16 @@ def check_missing_tags(tags: list) -> list:
         return REQUIRED_TAGS.copy()
     existing = {t["Key"] for t in tags}
     return [t for t in REQUIRED_TAGS if t not in existing]
+
+
+def get_age_days(create_time) -> int:
+    """Return age in days from a datetime object."""
+    if create_time is None:
+        return 0
+    if create_time.tzinfo is None:
+        create_time = create_time.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - create_time).days
+
 
 def find_orphan_ebs_volumes(ec2, dry_run: bool) -> list:
     """Find EBS volumes not attached to any instance."""
@@ -66,15 +83,17 @@ def find_orphan_ebs_volumes(ec2, dry_run: bool) -> list:
 
         size_gb = vol["Size"]
         monthly_cost = size_gb * PRICING["ebs_gp3_per_gb"]
+        age = get_age_days(vol.get("CreateTime"))
 
         finding = {
-            "resource_type": "ebs_volume",
             "resource_id": vol["VolumeId"],
-            "region": DEFAULT_REGION,
-            "reason": "EBS volume not attached to any instance",
-            "estimated_monthly_cost_usd": monthly_cost,
-            "tags": tags,
-            "action": "delete" if not dry_run else "would_delete",
+            "resource_type": "ebs_volume",
+            "reason": "unattached",
+            "age_days": age,
+            "estimated_monthly_cost_usd": round(monthly_cost, 2),
+            "tags": tags_to_dict(tags),
+            "suggested_action": "delete",
+            "safe_to_auto_delete": False,
         }
         findings.append(finding)
 
@@ -85,6 +104,7 @@ def find_orphan_ebs_volumes(ec2, dry_run: bool) -> list:
             print(f"  [DRY-RUN] Would delete EBS volume {vol['VolumeId']} (${monthly_cost:.2f}/mo)")
 
     return findings
+
 
 def find_stopped_instances(ec2, dry_run: bool, stopped_days: int) -> list:
     """Find EC2 instances stopped for more than stopped_days days."""
@@ -101,7 +121,6 @@ def find_stopped_instances(ec2, dry_run: bool, stopped_days: int) -> list:
             if is_protected(tags):
                 continue
 
-            # LocalStack may not have StateTransitionReason, so we handle that
             state_reason = instance.get("StateTransitionReason", "")
             stopped_since = None
 
@@ -117,14 +136,17 @@ def find_stopped_instances(ec2, dry_run: bool, stopped_days: int) -> list:
             if stopped_since and stopped_since > cutoff:
                 continue
 
+            age = get_age_days(stopped_since)
+
             finding = {
-                "resource_type": "ec2_instance",
                 "resource_id": instance["InstanceId"],
-                "region": DEFAULT_REGION,
-                "reason": f"EC2 instance stopped for more than {stopped_days} days",
-                "estimated_monthly_cost_usd": PRICING["ec2_t3_micro"],
-                "tags": tags,
-                "action": "delete" if not dry_run else "would_delete",
+                "resource_type": "ec2_instance",
+                "reason": f"stopped_over_{stopped_days}_days",
+                "age_days": age,
+                "estimated_monthly_cost_usd": round(PRICING["ec2_t3_micro"], 2),
+                "tags": tags_to_dict(tags),
+                "suggested_action": "terminate",
+                "safe_to_auto_delete": False,
             }
             findings.append(finding)
 
@@ -135,6 +157,7 @@ def find_stopped_instances(ec2, dry_run: bool, stopped_days: int) -> list:
                 print(f"  [DRY-RUN] Would terminate EC2 instance {instance['InstanceId']}")
 
     return findings
+
 
 def find_unassociated_eips(ec2, dry_run: bool) -> list:
     """Find Elastic IPs not associated with any instance."""
@@ -150,13 +173,14 @@ def find_unassociated_eips(ec2, dry_run: bool) -> list:
             continue
 
         finding = {
+            "resource_id": eip.get("AllocationId", eip.get("PublicIp", "unknown")),
             "resource_type": "elastic_ip",
-            "resource_id": eip.get("AllocationId", eip.get("PublicIp")),
-            "region": DEFAULT_REGION,
-            "reason": "Elastic IP not associated with any instance",
-            "estimated_monthly_cost_usd": PRICING["elastic_ip"],
-            "tags": tags,
-            "action": "delete" if not dry_run else "would_delete",
+            "reason": "unassociated",
+            "age_days": 0,
+            "estimated_monthly_cost_usd": round(PRICING["elastic_ip"], 2),
+            "tags": tags_to_dict(tags),
+            "suggested_action": "release",
+            "safe_to_auto_delete": False,
         }
         findings.append(finding)
 
@@ -167,6 +191,7 @@ def find_unassociated_eips(ec2, dry_run: bool) -> list:
             print(f"  [DRY-RUN] Would release Elastic IP {eip.get('PublicIp')}")
 
     return findings
+
 
 def find_missing_tags(ec2, dry_run: bool) -> list:
     """Find resources missing required tags."""
@@ -180,13 +205,14 @@ def find_missing_tags(ec2, dry_run: bool) -> list:
             missing = check_missing_tags(tags)
             if missing:
                 finding = {
-                    "resource_type": "ec2_instance",
                     "resource_id": instance["InstanceId"],
-                    "region": DEFAULT_REGION,
-                    "reason": f"Missing required tags: {', '.join(missing)}",
+                    "resource_type": "ec2_instance",
+                    "reason": f"missing_tags:{','.join(missing)}",
+                    "age_days": 0,
                     "estimated_monthly_cost_usd": 0.0,
-                    "tags": tags,
-                    "action": "flag",
+                    "tags": tags_to_dict(tags),
+                    "suggested_action": "tag",
+                    "safe_to_auto_delete": False,
                 }
                 findings.append(finding)
                 print(f"  [TAG] EC2 {instance['InstanceId']} missing tags: {missing}")
@@ -198,25 +224,28 @@ def find_missing_tags(ec2, dry_run: bool) -> list:
         missing = check_missing_tags(tags)
         if missing:
             finding = {
-                "resource_type": "ebs_volume",
                 "resource_id": vol["VolumeId"],
-                "region": DEFAULT_REGION,
-                "reason": f"Missing required tags: {', '.join(missing)}",
+                "resource_type": "ebs_volume",
+                "reason": f"missing_tags:{','.join(missing)}",
+                "age_days": 0,
                 "estimated_monthly_cost_usd": 0.0,
-                "tags": tags,
-                "action": "flag",
-            }            
+                "tags": tags_to_dict(tags),
+                "suggested_action": "tag",
+                "safe_to_auto_delete": False,
+            }
             findings.append(finding)
             print(f"  [TAG] EBS {vol['VolumeId']} missing tags: {missing}")
 
     return findings
 
-def generate_markdown(findings: list, total_cost: float) -> str:
+
+def generate_markdown(findings: list, total_cost: float, dry_run: bool) -> str:
     """Generate a markdown summary report."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     lines = [
         "# NimbusKart Cost Janitor Report",
         f"**Generated:** {now}",
+        f"**Mode:** {'DRY RUN' if dry_run else 'DELETE'}",
         f"**Total findings:** {len(findings)}",
         f"**Estimated monthly waste:** ${total_cost:.2f}",
         "",
@@ -230,11 +259,14 @@ def generate_markdown(findings: list, total_cost: float) -> str:
         for f in findings:
             lines.append(f"### {f['resource_type']} — {f['resource_id']}")
             lines.append(f"- **Reason:** {f['reason']}")
+            lines.append(f"- **Age:** {f['age_days']} days")
             lines.append(f"- **Estimated cost:** ${f['estimated_monthly_cost_usd']:.2f}/mo")
-            lines.append(f"- **Action:** {f['action']}")
+            lines.append(f"- **Suggested action:** {f['suggested_action']}")
+            lines.append(f"- **Safe to auto-delete:** {f['safe_to_auto_delete']}")
             lines.append("")
 
     return "\n".join(lines)
+
 
 def main():
     parser = argparse.ArgumentParser(description="NimbusKart Cost Janitor")
@@ -293,12 +325,15 @@ def main():
 
     total_cost = sum(f["estimated_monthly_cost_usd"] for f in all_findings)
 
-    # Build report.json
+    # Build report.json matching required schema exactly
     report = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "dry_run": dry_run,
-        "total_findings": len(all_findings),
-        "estimated_monthly_waste_usd": round(total_cost, 2),
+        "scan_timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "account_id": ACCOUNT_ID,
+        "region": DEFAULT_REGION,
+        "summary": {
+            "total_orphans": len(all_findings),
+            "estimated_monthly_waste_usd": round(total_cost, 2),
+        },
         "findings": all_findings,
     }
 
@@ -312,11 +347,16 @@ def main():
         json.dump(report, f, indent=2, default=str)
 
     with open(md_path, "w") as f:
-        f.write(generate_markdown(all_findings, total_cost))
+        f.write(generate_markdown(all_findings, total_cost, dry_run))
 
     print(f"\n✅ Done! {len(all_findings)} findings, ${total_cost:.2f}/mo estimated waste")
     print(f"   Report: {json_path}")
     print(f"   Summary: {md_path}")
 
+    # Exit non-zero if orphans found in dry-run mode (so CI can fail)
+    if dry_run and len(all_findings) > 0:
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    main()   
+    main()
