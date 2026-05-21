@@ -61,6 +61,7 @@ jobs:
       - name: Run Cost Janitor
         working-directory: janitor
         run: python3 janitor.py --dry-run --output-dir ../output
+        continue-on-error: true
 
       - name: Upload report
         uses: actions/upload-artifact@v4
