@@ -1,5 +1,5 @@
 {
-  "scan_timestamp": "2026-05-21T10:33:12Z",
+  "scan_timestamp": "2026-05-22T10:25:50Z",
   "account_id": "000000000000",
   "region": "us-east-1",
   "summary": {
@@ -8,23 +8,23 @@
   },
   "findings": [
     {
-      "resource_id": "vol-eadceefa",
+      "resource_id": "vol-32372090",
       "resource_type": "ebs_volume",
       "reason": "unattached",
       "age_days": 0,
       "estimated_monthly_cost_usd": 0.8,
       "tags": {
-        "ManagedBy": "terraform",
-        "Owner": "devops-team",
-        "Environment": "staging",
+        "Name": "nimbuskart-orphan-vol",
         "Project": "NimbusKart",
-        "Name": "nimbuskart-orphan-vol"
+        "Environment": "staging",
+        "ManagedBy": "terraform",
+        "Owner": "devops-team"
       },
       "suggested_action": "delete",
       "safe_to_auto_delete": false
     },
     {
-      "resource_id": "vol-915ad4fc",
+      "resource_id": "vol-a43bc014",
       "resource_type": "ebs_volume",
       "reason": "missing_tags:Project,Environment,Owner,ManagedBy",
       "age_days": 0,
@@ -34,7 +34,7 @@
       "safe_to_auto_delete": false
     },
     {
-      "resource_id": "vol-5f52d70f",
+      "resource_id": "vol-791f9aea",
       "resource_type": "ebs_volume",
       "reason": "missing_tags:Project,Environment,Owner,ManagedBy",
       "age_days": 0,
