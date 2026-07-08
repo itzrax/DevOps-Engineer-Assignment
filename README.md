@@ -1,4 +1,4 @@
-# NimbusKart DevOps Assignment 
+# NimbusKart-Cost-Janitor
 
 ## Overview
 
